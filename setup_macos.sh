@@ -138,13 +138,18 @@ bochs -rc /tmp/bochs.rc -q 'display_library: term'
     exit
 fi
 
-URL="http://localhost:6080/vnc.html?autoconnect=true&resize=scale"
+# Every run serves noVNC from a brand-new URL path, so the browser has no
+# cached copy of vnc.html or its JS modules to fall back on. This means no
+# Ctrl+Shift+R (hard reload) is ever needed, and HTML/JS from different noVNC
+# releases can never be mixed.
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+URL="http://localhost:6080/$RUN_ID/vnc.html?autoconnect=true&resize=scale"
 echo "[*] Browser mode: $URL"
 
 # Open the browser as soon as the web server inside the container is up
 (
     for i in $(seq 1 300); do
-        if curl -s -o /dev/null http://localhost:6080/vnc.html; then
+        if curl -s -o /dev/null "http://localhost:6080/$RUN_ID/vnc.html"; then
             if command -v xdg-open >/dev/null 2>&1; then
                 xdg-open "$URL" >/dev/null 2>&1 || true
             elif command -v open >/dev/null 2>&1; then
@@ -165,11 +170,16 @@ docker run --rm -it \
     --mount type=tmpfs,destination=/fos/obj \
     fos-env bash -c "
 $BUILD || exit 1
+# Serve this run's noVNC from its own path, so the browser cannot reuse
+# cached files from a previous run.
+mkdir -p /tmp/novnc-runs
+rm -rf /tmp/novnc-runs/$RUN_ID
+cp -a /usr/share/novnc /tmp/novnc-runs/$RUN_ID
 export DISPLAY=:99
 Xvfb :99 -screen 0 1024x768x24 >/dev/null 2>&1 &
 sleep 1
 x11vnc -display :99 -forever -shared -nopw -quiet >/dev/null 2>&1 &
-websockify --web /usr/share/novnc 6080 localhost:5900 >/dev/null 2>&1 &
+websockify --web /tmp/novnc-runs 6080 localhost:5900 >/dev/null 2>&1 &
 echo c > /tmp/bochs.rc
 bochs -rc /tmp/bochs.rc -q 'display_library: x'
 "

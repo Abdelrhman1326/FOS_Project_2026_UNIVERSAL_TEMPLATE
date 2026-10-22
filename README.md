@@ -82,10 +82,18 @@ FOS is rebuilt
 FOS starts
 ```
 
-### After running `./run` at any time; the FOS Should automatically launch in a browser tab, if it didn't please open the tab manually using the following link:
+### After running `./run`
+
+FOS should automatically launch in a new browser tab. If it didn't, open the
+URL that `./run` printed in your terminal. It looks like this:
+
 ```
-http://localhost:6080/vnc.html?autoconnect=true&resize=scale
+http://localhost:6080/<run-id>/vnc.html?autoconnect=true&resize=scale
 ```
+
+Each run generates a fresh `<run-id>`, so the browser always fetches the
+current noVNC page and you never need a hard reload (Ctrl+Shift+R) to make the
+FOS screen work.
 
 **Setup once. Run `./run` whenever you want to build and run FOS.**
 

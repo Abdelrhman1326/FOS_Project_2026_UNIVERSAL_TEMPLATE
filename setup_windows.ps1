@@ -168,7 +168,12 @@ if ($Mode -eq "term") {
     exit $LASTEXITCODE
 }
 
-$URL = "http://localhost:6080/vnc.html?autoconnect=true&resize=scale"
+# Every run serves noVNC from a brand-new URL path, so the browser has no
+# cached copy of vnc.html or its JS modules to fall back on. This means no
+# Ctrl+Shift+R (hard reload) is ever needed, and HTML/JS from different noVNC
+# releases can never be mixed.
+$RUN_ID = "$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"
+$URL = "http://localhost:6080/$RUN_ID/vnc.html?autoconnect=true&resize=scale"
 
 Write-Host ""
 Write-Host "[*] Browser mode selected."
@@ -182,12 +187,17 @@ Read-Host "Press Enter when you're ready to start the build"
 $script = @(
     '#!/bin/bash',
     "$BUILD || exit 1",
+    '# Serve this run''s noVNC from its own path, so the browser cannot reuse',
+    '# cached files from a previous run.',
+    'mkdir -p /tmp/novnc-runs',
+    "rm -rf /tmp/novnc-runs/$RUN_ID",
+    "cp -a /usr/share/novnc /tmp/novnc-runs/$RUN_ID",
     'export DISPLAY=:99',
     'Xvfb :99 -screen 0 1024x768x24 >/dev/null 2>&1 &',
     'sleep 1',
     'x11vnc -display :99 -forever -shared -nopw -quiet >/dev/null 2>&1 &',
     'sleep 1',
-    'websockify --web /usr/share/novnc 6080 localhost:5900 >/dev/null 2>&1 &',
+    'websockify --web /tmp/novnc-runs 6080 localhost:5900 >/dev/null 2>&1 &',
     'sleep 1',
     'echo c > /tmp/bochs.rc',
     "bochs -rc /tmp/bochs.rc -q 'display_library: x'"
