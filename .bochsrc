@@ -491,6 +491,11 @@ parport1: enabled=1, file="CON"  # or "CON:"
 
 #sb16: midimode=1, midi=/dev/midi00, wavemode=1, wave=/dev/dsp, loglevel=2, log=sb16.log, dmatimer=600000
 
+# Docker containers do not expose a host audio device. Keep Bochs from
+# selecting ALSA and disable the emulated PC speaker output.
+sound: driver=dummy
+speaker: enabled=0
+
 #=======================================================================
 # VGA_UPDATE_INTERVAL:
 # Video memory is scanned for updates and screen updated every so many
