@@ -132,7 +132,7 @@ int sys_check_WS_list(uint32* WS_list_content, int actual_WS_list_size, uint32 l
 #if USE_KHEAP
 	int WS_list_validation = 1;
 	/*DISABLE THE INTERRUPT DURING THE CHECKING TO AVOID CLOCK INTERRUPTS*/
-	pushcli(); cpuclk_pause();
+	cpuclk_pause(); pushcli();
 	{
 //		cprintf("CURRENT WS CONTENT BEFORE CHECKING:\n");
 //		env_page_ws_print(get_cpu_proc());
@@ -151,7 +151,11 @@ int sys_check_WS_list(uint32* WS_list_content, int actual_WS_list_size, uint32 l
 		//if it's required to check the last_WS_element
 		if (last_WS_element_content != 0)
 		{
-			if (ROUNDDOWN(env->page_last_WS_element->virtual_address, PAGE_SIZE) != ROUNDDOWN(last_WS_element_content, PAGE_SIZE))
+			if (env->page_last_WS_element == NULL)
+			{
+				WS_list_validation = 0;
+			}
+			else if (ROUNDDOWN(env->page_last_WS_element->virtual_address, PAGE_SIZE) != ROUNDDOWN(last_WS_element_content, PAGE_SIZE))
 			{
 				WS_list_validation = 0;
 			}

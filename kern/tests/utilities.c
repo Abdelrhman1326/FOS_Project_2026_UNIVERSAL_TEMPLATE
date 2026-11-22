@@ -18,6 +18,7 @@
 #include <kern/mem/memory_manager.h>
 #include <kern/mem/kheap.h>
 #include "../cons/console.h"
+#include <kern/ipc/ipc.h>
 
 #include <kern/trap/fault_handler.h>
 
@@ -111,6 +112,40 @@ __inline__ uint8 __get_block_index__(uint32 size)
 }
 
 
+void update_env_info(bool uce)
+{
+	bool is_held = holding_kspinlock(&ProcessQueues.qlock);
+	if (!is_held)
+	{
+		acquire_kspinlock(&ProcessQueues.qlock);
+	}
+	{
+		for (int i = 0; i < num_of_ready_queues; ++i)
+		{
+			struct Env *e ;
+			LIST_FOREACH(e, &(ProcessQueues.env_ready_queues[i]), Env)
+			{
+				e->isExpandedBefore = i;
+			}
+		}
+		if (uce && isSchedMethodMLFQ())
+		{
+			struct Env *cur_env = get_cpu_proc();
+			if (cur_env)
+			{
+				if (cur_env->isExpandedBefore < num_of_ready_queues - 1)
+					cur_env->isExpandedBefore++;
+			}
+		}
+	}
+	if (!is_held)
+	{
+		release_kspinlock(&ProcessQueues.qlock);
+	}
+}
+
+
+
 int __firstTimeSleep = 1;
 struct Channel __tstchan__ ;
 struct kspinlock __tstchan_lk__;
@@ -119,14 +154,12 @@ struct sleeplock __tstslplk__;
 int __numOfSlaves = 0;
 #define __maxNumOfKSems (100)
 struct ksemaphore __ksems[NENV][__maxNumOfKSems];
-/*******************************************************/
-/*2026: ALL UTILITIES ARE TREATED AS A CRITICAL SECTION*/
-/*	i.e. Interrupts are disabled and clock is paused   */
-/*******************************************************/
+extern char __isKernPanic__ ;
+
 void sys_utilities(char* utilityName, int value)
 {
 	//Disable interrupts and pause clock
-	pushcli(); cpuclk_pause();
+	//pushcli(); cpuclk_pause();
 
 	if (strncmp(utilityName, "__BSDSetNice@", strlen("__BSDSetNice@")) == 0)
 	{
@@ -345,6 +378,9 @@ void sys_utilities(char* utilityName, int value)
 	{
 		if (value == 0)
 		{
+			//kclock_stop();
+			cpuclk_pause();
+			//cli();
 			struct Env * p = get_cpu_proc();
 			if (p == NULL)
 			{
@@ -355,6 +391,9 @@ void sys_utilities(char* utilityName, int value)
 		}
 		else if (value == 1)
 		{
+			//kclock_stop();
+			cpuclk_pause();
+			//cli();
 			struct Env * p = get_cpu_proc();
 			if (p == NULL)
 			{
@@ -379,7 +418,7 @@ void sys_utilities(char* utilityName, int value)
 			//cprintf("\n\n<<<<<<<<<<< BAD ENV >>>>>>>>>>>\n\n");
 			*procState = E_BAD_ENV;
 			//Enable interrupts and resume clock
-			popcli(); cpuclk_resume();
+			//popcli(); cpuclk_resume();
 			return;
 		}
 		else
@@ -440,7 +479,7 @@ void sys_utilities(char* utilityName, int value)
 			cprintf("num of references MISMATCHED! Expected = %d, Actual = %d\n", numOfRefs, LIST_SIZE(&(env->referenceStreamList)));
 			*correct = 0;
 			//Enable interrupts and resume clock
-			popcli(); cpuclk_resume();
+			//popcli(); cpuclk_resume();
 			return;
 		}
 
@@ -455,7 +494,7 @@ void sys_utilities(char* utilityName, int value)
 				cprintf("Ref#%d MISMATCHED! Expected = %d, Actual = %d\n", ROUNDDOWN(expectedRefStream[i], PAGE_SIZE), ROUNDDOWN(curRef->virtual_address, PAGE_SIZE));
 				*correct = 0;
 				//Enable interrupts and resume clock
-				popcli(); cpuclk_resume();
+				//popcli(); cpuclk_resume();
 				return;
 			}
 			curRef = LIST_NEXT(curRef);
@@ -553,7 +592,7 @@ void sys_utilities(char* utilityName, int value)
 			{
 				*check = 0;
 				//Enable interrupts and resume clock
-				popcli(); cpuclk_resume();
+				//popcli(); cpuclk_resume();
 				return;
 			}
 		}
@@ -597,9 +636,89 @@ void sys_utilities(char* utilityName, int value)
 			*check = 1;
 		else
 			*check = 0;
-
 	}
+	else if (strcmp(utilityName, "__IsKernPanic__") == 0)
+	{
+		uint32* isKernPanic = (uint32*) value ;
+		*isKernPanic = __isKernPanic__ ;
+	}
+	else if (strcmp(utilityName, "__ExitAllReadyEnvs__") == 0)
+	{
+		sched_exit_all_ready_envs();
+	}
+	else if (strncmp(utilityName, "__CheckMBConnections@", strlen("__CheckMBConnections@")) == 0)
+	{
+#define MAX_ENV_CNT 40
+		bool* correct = (bool*) value ;
+		*correct = 1;
+		int number_of_tokens;
+		char *tokens[MAX_ENV_CNT];
+		strsplit(utilityName, "@", tokens, &number_of_tokens) ;
+		int numOfSenders = strtol(tokens[1], NULL, 10);
+		int numOfReceivers = strtol(tokens[2], NULL, 10);
+		assert(numOfSenders + numOfReceivers < MAX_ENV_CNT);
+		struct Env* env = get_cpu_proc() ;
 
+		uint32 *expectedSenders = (uint32 *)strtol(tokens[3], NULL, 10);
+		uint32 *expectedReceivers = (uint32 *)strtol(tokens[4], NULL, 10);
+		char* MBName = tokens[5];
+
+		struct Mailbox *mb ;
+		int found = 0;
+		LIST_FOREACH(mb, &mailbox_list, Mailbox)
+		{
+			if (strcmp(mb->name, MBName) == 0)
+			{
+				found = 1;
+				break;
+			}
+		}
+		if (!found)
+		{
+			cprintf("Mailbox %s not found in the list", MBName);
+			*correct = 0;
+			return;
+		}
+
+		//Check the expected senders inside the mb
+		for (int i = 0; i < numOfSenders; ++i)
+		{
+			found = 0;
+			for (int j = 0; j < MB_MAX_SENDERS; ++j)
+			{
+				if (expectedSenders[i] == mb->senders[j])
+				{
+					found = 1;
+					break;
+				}
+			}
+			if (!found)
+			{
+				cprintf("Sender Env#%d NOT Found in MB %s!", expectedSenders[i], MBName);
+				*correct = 0;
+				return;
+			}
+		}
+		//Check the expected receivers inside the mb
+		for (int i = 0; i < numOfReceivers; ++i)
+		{
+			found = 0;
+			for (int j = 0; j < MB_MAX_RECEIVERS; ++j)
+			{
+				if (expectedReceivers[i] == mb->receivers[j])
+				{
+					found = 1;
+					break;
+				}
+			}
+			if (!found)
+			{
+				cprintf("Receiver Env#%d NOT Found in MB %s!", expectedReceivers[i], MBName);
+				*correct = 0;
+				return;
+			}
+		}
+	}
 	if ((int)value < 0)
 	{
 		if (strcmp(utilityName, "__ReplStrat__") == 0)
@@ -641,7 +760,7 @@ void sys_utilities(char* utilityName, int value)
 	}
 
 	//Enable interrupts and resume clock
-	popcli(); cpuclk_resume();
+	//popcli(); cpuclk_resume();
 
 	/*****************************************************************************************/
 
