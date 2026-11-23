@@ -42,4 +42,8 @@ void sys_utilities(char* utilityName, int value);
 
 /*2025*/
 uint32* clone_kern_dir();
+
+/*2026*/
+void update_env_info(bool uce);
+
 #endif /* !FOS_KERN_UTILITIES_H */

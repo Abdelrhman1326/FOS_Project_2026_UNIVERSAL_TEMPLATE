@@ -76,8 +76,8 @@
 # Bochs. Now the start address can be calculated from image size.
 #=======================================================================
 #romimage: file=$BXSHARE/BIOS-bochs-latest
-#romimage: file=./BIOS-bochs-latest
-romimage: file=./BIOS-bochs-latest_2-3
+romimage: file=./BIOS-bochs-latest
+#romimage: file=./BIOS-bochs-latest_2-3
 #address=0xf0000
 #romimage: file=mybios.bin, address=0xfff80000 # 512k at memory top
 #romimage: file=mybios.bin # calculate start address from image size
@@ -111,7 +111,14 @@ romimage: file=./BIOS-bochs-latest_2-3
 #  650Mhz Athlon K-7 with Linux 2.4.4/egcs-2.91.66  2 to  2.5 Mips
 #  400Mhz Pentium II with Linux 2.0.36/egcs-1.0.3   1 to  1.8 Mips
 #=======================================================================
-cpu: count=1, ips=10000000
+#cpu: count=1, ips=10000000
+#cpu: reset_on_triple_fault=1
+#cpu: ignore_bad_msrs=1
+#apic: enabled=1, ioapic=1
+
+#cpu: count=2, ips=1000000
+
+cpu: count=8, ips=10000000, model=core_duo_t2400_yonah, reset_on_triple_fault=1
 
 #=======================================================================
 # MEGS
@@ -279,7 +286,6 @@ ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
 #   ata3-slave:  type=cdrom, path=iso.sample, status=inserted
 #=======================================================================
 ata0-master: type=disk, mode=flat, path="./obj/kern/bochs.img"
-
 #=======================================================================
 # BOOT:
 # This defines the boot sequence. Now you can specify up to 3 boot drives.
@@ -433,7 +439,9 @@ debugger_log: -
 #   com3: enabled=1, mode=raw, dev=com1
 #   com3: enabled=1, mode=socket, dev=localhost:8888
 #=======================================================================
-#com1: enabled=1, mode=term, dev=/dev/ttyp9
+#   com1: enabled=1, mode=term, dev=/dev/ttyp9
+
+#com1: enabled=1, mode=term
 
 
 #=======================================================================
@@ -449,10 +457,12 @@ debugger_log: -
 #   parport2: enabled=1, file="/dev/lp0"
 #   parport1: enabled=0
 #=======================================================================
-# parport1: enabled=1, file="/dev/stdout"
+parport1: enabled=1, file="/dev/stdout"
 # parport1: enabled=1, file="stdout"
 # parport1: enabled=1, file="console.out"
-parport1: enabled=1, file="CON"  # or "CON:"
+# parport1: enabled=1, file="CON"  # or "CON:"
+#parport1: enabled=1, file=-
+# parport1: enabled=1, file=/dev/tty
 
 #=======================================================================
 # SB16:
@@ -490,11 +500,6 @@ parport1: enabled=1, file="CON"  # or "CON:"
 #=======================================================================
 
 #sb16: midimode=1, midi=/dev/midi00, wavemode=1, wave=/dev/dsp, loglevel=2, log=sb16.log, dmatimer=600000
-
-# Docker containers do not expose a host audio device. Keep Bochs from
-# selecting ALSA and disable the emulated PC speaker output.
-sound: driver=dummy
-speaker: enabled=0
 
 #=======================================================================
 # VGA_UPDATE_INTERVAL:

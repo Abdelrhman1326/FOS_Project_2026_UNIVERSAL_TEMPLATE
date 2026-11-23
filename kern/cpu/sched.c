@@ -65,7 +65,8 @@ fos_scheduler(void)
 	struct CpuInfo *c = mycpu();
 	c->proc = 0;
 	c->scheduler_status = SCH_STARTED;
-
+	cpuclk_start();
+	
 	//This variable should be set to the next environment to be run (if any)
 	struct Env* next_env = NULL;
 
@@ -75,6 +76,8 @@ fos_scheduler(void)
 		// Check ready queue(s) looking for process to run.
 		do
 		{
+			update_env_info(1);
+
 			//Get next env according to the current scheduler
 			next_env = sched_next[scheduler_method]() ;
 
@@ -366,6 +369,7 @@ void clock_interrupt_handler(struct Trapframe* tf)
 	/********DON'T CHANGE THESE LINES***********/
 	ticks++ ;
 	struct Env* p = get_cpu_proc();
+	update_env_info(0) ;
 	if (p == NULL)
 	{
 		lapic_eoi();
